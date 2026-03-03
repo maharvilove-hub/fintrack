@@ -22,8 +22,8 @@ function parseAmount(v) {
   // If already number
   if (typeof v === "number") return isFinite(v) ? v : 0;
 
-  // If string like "1,000" or "1000"
-  const s = String(v).replace(/,/g, "").trim();
+  // Remove everything except digits, dot, minus
+  const s = String(v).trim().replace(/[^0-9.\-]/g, "");
   const n = Number(s);
   return isFinite(n) ? n : 0;
 }
