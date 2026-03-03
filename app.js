@@ -1,7 +1,7 @@
 // ==========================
 // CONFIG
 // ==========================
-const SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxaMmxqZq_WBI1rZeuDGhITy5LYGqk6ertQY9n9N_NA-Ju4pd0dlZcwG0v1wtMz-TAETQ/exec";
 
 // ==========================
 // HELPERS
