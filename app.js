@@ -7,18 +7,24 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxaMmxqZq_WBI1rZeuDG
 // HELPERS
 // ==========================
 const fmt = new Intl.NumberFormat("en-PK", { maximumFractionDigits: 2 });
-const money = (n) => `₨ ${fmt.format(Number(n || 0))}`;
+const money = (n) => `Rs ${fmt.format(Number(n || 0))}`;
 
 function todayISO() {
   const d = new Date();
   const off = d.getTimezoneOffset();
-  // Keep local date accurate
   const local = new Date(d.getTime() - off * 60 * 1000);
   return local.toISOString().slice(0, 10);
 }
 
 function parseAmount(v) {
-  const n = Number(v);
+  if (v === null || v === undefined) return 0;
+
+  // If already number
+  if (typeof v === "number") return isFinite(v) ? v : 0;
+
+  // If string like "1,000" or "1000"
+  const s = String(v).replace(/,/g, "").trim();
+  const n = Number(s);
   return isFinite(n) ? n : 0;
 }
 
@@ -26,12 +32,11 @@ function showToast(msg, type = "success") {
   const area = document.getElementById("toastArea");
   const id = `t_${Date.now()}`;
 
-  area.innerHTML = `
+  area.innerHTML =
+    `
     <div class="toast align-items-center text-bg-${type} border-0 show mb-2" id="${id}" role="alert">
       <div class="d-flex">
-        <div class="toast-body">
-          ${msg}
-        </div>
+        <div class="toast-body">${msg}</div>
         <button type="button" class="btn-close btn-close-white me-2 m-auto" aria-label="Close"></button>
       </div>
     </div>
@@ -43,27 +48,26 @@ function showToast(msg, type = "success") {
 }
 
 function startOfWeek(d) {
-  // Monday as start
   const dt = new Date(d);
   const day = dt.getDay(); // 0=Sun..6=Sat
-  const diff = (day === 0 ? -6 : 1) - day;
+  const diff = (day === 0 ? -6 : 1) - day; // Monday start
   dt.setDate(dt.getDate() + diff);
-  dt.setHours(0,0,0,0);
+  dt.setHours(0, 0, 0, 0);
   return dt;
 }
 
 function startOfMonth(d) {
   const dt = new Date(d);
   dt.setDate(1);
-  dt.setHours(0,0,0,0);
+  dt.setHours(0, 0, 0, 0);
   return dt;
 }
 
 function dateOnly(dateStr) {
-  // Accept yyyy-mm-dd and return Date at local midnight
-  const [y,m,dd] = String(dateStr).split("-").map(Number);
+  // Accept yyyy-mm-dd
+  const [y, m, dd] = String(dateStr).split("-").map(Number);
   const dt = new Date(y, m - 1, dd);
-  dt.setHours(0,0,0,0);
+  dt.setHours(0, 0, 0, 0);
   return dt;
 }
 
@@ -115,7 +119,6 @@ function updateTypeUI() {
   if (t === "Transfer") {
     singleAccountWrap.classList.add("d-none");
     transferWrap.classList.remove("d-none");
-    // Not required by HTML5 anymore since wrapped; validate manually
   } else {
     transferWrap.classList.add("d-none");
     singleAccountWrap.classList.remove("d-none");
@@ -136,7 +139,7 @@ async function saveTransaction(payload) {
   const res = await fetch(SCRIPT_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" }, // Apps Script friendly
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
   const data = await res.json();
   if (!data.ok) throw new Error(data.error || "Failed to save");
@@ -144,38 +147,67 @@ async function saveTransaction(payload) {
 }
 
 // ==========================
-// COMPUTATIONS
+// NORMALIZE (IMPORTANT FIX)
 // ==========================
+function toISODate(raw) {
+  if (!raw) return "";
+
+  // If already yyyy-mm-dd
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // Sometimes sheet returns date like "3/3/2026"
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+    const [a, b, y] = s.split("/").map(Number);
+    const m = a > 12 ? b : a;
+    const d = a > 12 ? a : b;
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+
+  // Timestamp like "3/3/2026 13:..." OR any parseable date
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime())) {
+    const off = dt.getTimezoneOffset();
+    const local = new Date(dt.getTime() - off * 60000);
+    return local.toISOString().slice(0, 10);
+  }
+
+  return "";
+}
+
 function normalizeTx(row) {
-  // Apps Script returns headers as keys
-  // Timestamp can be Date object string; keep as is
+  const isoDate = toISODate(row["Date"]);
+
   return {
-    date: String(row["Date"] || "").slice(0, 10),
-    type: String(row["Type"] || ""),
-    category: String(row["Category"] || ""),
+    date: isoDate,
+    type: String(row["Type"] || "").trim(),
+    category: String(row["Category"] || "").trim(),
     amount: parseAmount(row["Amount"]),
-    fromAccount: String(row["FromAccount"] || ""),
-    toAccount: String(row["ToAccount"] || ""),
-    note: String(row["Note"] || "")
+    fromAccount: String(row["FromAccount"] || "").trim(),
+    toAccount: String(row["ToAccount"] || "").trim(),
+    note: String(row["Note"] || "").trim(),
   };
 }
 
+// ==========================
+// COMPUTATIONS
+// ==========================
 function getRangeForFilter(filter) {
   const now = new Date();
-  now.setHours(0,0,0,0);
+  now.setHours(0, 0, 0, 0);
 
   if (filter === "daily") {
-    return { start: new Date(now), end: new Date(now.getTime() + 86400000) }; // [start, end)
+    return { start: new Date(now), end: new Date(now.getTime() + 86400000) };
   }
   if (filter === "weekly") {
     const start = startOfWeek(now);
     const end = new Date(start.getTime() + 7 * 86400000);
     return { start, end };
   }
-  // monthly
+
   const start = startOfMonth(now);
   const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
-  end.setHours(0,0,0,0);
+  end.setHours(0, 0, 0, 0);
   return { start, end };
 }
 
@@ -186,12 +218,12 @@ function inRange(tx, range) {
 }
 
 function calcBalances(transactions) {
-  // Start at 0 balances; compute based on allTx
   let cash = 0;
   let jazz = 0;
 
   for (const tx of transactions) {
     const amt = tx.amount || 0;
+
     if (tx.type === "Income") {
       if (tx.fromAccount === "Cash") cash += amt;
       if (tx.fromAccount === "JazzCash") jazz += amt;
@@ -199,7 +231,6 @@ function calcBalances(transactions) {
       if (tx.fromAccount === "Cash") cash -= amt;
       if (tx.fromAccount === "JazzCash") jazz -= amt;
     } else if (tx.type === "Transfer") {
-      // Move from -> to
       if (tx.fromAccount === "Cash") cash -= amt;
       if (tx.fromAccount === "JazzCash") jazz -= amt;
       if (tx.toAccount === "Cash") cash += amt;
@@ -212,32 +243,26 @@ function calcBalances(transactions) {
 
 function sumByType(transactions, type) {
   return transactions
-    .filter(t => t.type === type)
+    .filter((t) => t.type === type)
     .reduce((a, b) => a + (b.amount || 0), 0);
 }
 
 function computeDashboard() {
-  const now = new Date();
-  now.setHours(0,0,0,0);
-
   const todayRange = getRangeForFilter("daily");
   const monthRange = getRangeForFilter("monthly");
   const activeRange = getRangeForFilter(activeFilter);
 
-  const todayTx = allTx.filter(t => inRange(t, todayRange));
-  const monthTx = allTx.filter(t => inRange(t, monthRange));
-  const filteredTx = allTx.filter(t => inRange(t, activeRange));
+  const todayTx = allTx.filter((t) => inRange(t, todayRange));
+  const monthTx = allTx.filter((t) => inRange(t, monthRange));
+  const filteredTx = allTx.filter((t) => inRange(t, activeRange));
 
-  // Today & Monthly sums (ignore transfers)
   const todayIncome = sumByType(todayTx, "Income");
   const todayExpense = sumByType(todayTx, "Expense");
   const monthIncome = sumByType(monthTx, "Income");
   const monthExpense = sumByType(monthTx, "Expense");
 
-  // Balances from all transactions (not filtered)
   const { cash, jazz, total } = calcBalances(allTx);
 
-  // Render
   todayIncomeEl.textContent = money(todayIncome);
   todayExpenseEl.textContent = money(todayExpense);
   monthIncomeEl.textContent = money(monthIncome);
@@ -250,56 +275,62 @@ function computeDashboard() {
   const net = monthIncome - monthExpense;
   netPillEl.textContent = `Net: ${money(net)}`;
 
-  // Table + Chart based on active filter
   renderTable(filteredTx);
   renderChart(filteredTx);
 }
 
 function renderTable(txList) {
-  const items = [...txList].sort((a,b) => (b.date || "").localeCompare(a.date || "")).slice(0, 12);
+  const items = [...txList]
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+    .slice(0, 12);
 
   if (!items.length) {
     txTableBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No transactions in this range.</td></tr>`;
     return;
   }
 
-  txTableBody.innerHTML = items.map(tx => {
-    const badge = tx.type === "Income"
-      ? `<span class="badge bg-success-subtle text-success border border-success-subtle">Income</span>`
-      : tx.type === "Expense"
-        ? `<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Expense</span>`
-        : `<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Transfer</span>`;
+  txTableBody.innerHTML = items
+    .map((tx) => {
+      const badge =
+        tx.type === "Income"
+          ? `<span class="badge bg-success-subtle text-success border border-success-subtle">Income</span>`
+          : tx.type === "Expense"
+          ? `<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Expense</span>`
+          : `<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Transfer</span>`;
 
-    const acc = tx.type === "Transfer"
-      ? `${tx.fromAccount} <i class="bi bi-arrow-right-short"></i> ${tx.toAccount}`
-      : `${tx.fromAccount}`;
+      const acc =
+        tx.type === "Transfer"
+          ? `${tx.fromAccount} <i class="bi bi-arrow-right-short"></i> ${tx.toAccount}`
+          : `${tx.fromAccount}`;
 
-    return `
-      <tr>
-        <td class="fw-semibold">${tx.date || "-"}</td>
-        <td>${badge}</td>
-        <td>${tx.category || "-"}</td>
-        <td class="text-end fw-bold">${money(tx.amount)}</td>
-        <td>${acc || "-"}</td>
-        <td class="text-muted small">${(tx.note || "").slice(0, 40)}</td>
-      </tr>
-    `;
-  }).join("");
+      return `
+        <tr>
+          <td class="fw-semibold">${tx.date || "-"}</td>
+          <td>${badge}</td>
+          <td>${tx.category || "-"}</td>
+          <td class="text-end fw-bold">${money(tx.amount)}</td>
+          <td>${acc || "-"}</td>
+          <td class="text-muted small">${(tx.note || "").slice(0, 40)}</td>
+        </tr>
+      `;
+    })
+    .join("");
 }
 
 function renderChart(txList) {
-  // Aggregate sums for the active filter range: Income vs Expense
   const income = sumByType(txList, "Income");
   const expense = sumByType(txList, "Expense");
 
   const ctx = document.getElementById("incomeExpenseChart");
   const data = {
     labels: ["Income", "Expense"],
-    datasets: [{
-      label: "Amount",
-      data: [income, expense],
-      borderWidth: 1
-    }]
+    datasets: [
+      {
+        label: "Amount",
+        data: [income, expense],
+        borderWidth: 1,
+      },
+    ],
   };
 
   if (chart) {
@@ -318,18 +349,18 @@ function renderChart(txList) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: (ctx) => ` ${money(ctx.parsed.y)}`
-          }
-        }
+            label: (ctx) => ` ${money(ctx.parsed.y)}`,
+          },
+        },
       },
       scales: {
         y: {
           ticks: {
-            callback: (v) => money(v).replace("₨ ", "")
-          }
-        }
-      }
-    }
+            callback: (v) => money(v).replace("Rs ", ""),
+          },
+        },
+      },
+    },
   });
 }
 
@@ -338,7 +369,9 @@ function renderChart(txList) {
 // ==========================
 function exportPDF() {
   const range = getRangeForFilter(activeFilter);
-  const txList = allTx.filter(t => inRange(t, range)).sort((a,b)=> (a.date||"").localeCompare(b.date||""));
+  const txList = allTx
+    .filter((t) => inRange(t, range))
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
   const income = sumByType(txList, "Income");
   const expense = sumByType(txList, "Expense");
@@ -354,22 +387,26 @@ function exportPDF() {
   doc.text(title, 14, 16);
 
   doc.setFontSize(11);
-  doc.text(`Range: ${range.start.toISOString().slice(0,10)} to ${new Date(range.end.getTime()-1).toISOString().slice(0,10)}`, 14, 24);
+  doc.text(
+    `Range: ${range.start.toISOString().slice(0, 10)} to ${new Date(range.end.getTime() - 1).toISOString().slice(0, 10)}`,
+    14,
+    24
+  );
 
   doc.setFontSize(12);
-  doc.text(`Income: ${money(income)}    Expense: ${money(expense)}    Net: ${money(income-expense)}`, 14, 34);
+  doc.text(`Income: ${money(income)}    Expense: ${money(expense)}    Net: ${money(income - expense)}`, 14, 34);
 
   doc.setFontSize(11);
   doc.text(`Balances (All-time): Cash ${money(cash)} | JazzCash ${money(jazz)} | Total ${money(total)}`, 14, 42);
 
-  const rows = txList.map(t => ([
+  const rows = txList.map((t) => [
     t.date || "",
     t.type || "",
     t.category || "",
     String(t.amount || 0),
-    t.type === "Transfer" ? `${t.fromAccount} -> ${t.toAccount}` : (t.fromAccount || ""),
-    (t.note || "")
-  ]));
+    t.type === "Transfer" ? `${t.fromAccount} -> ${t.toAccount}` : t.fromAccount || "",
+    t.note || "",
+  ]);
 
   doc.autoTable({
     startY: 48,
@@ -377,7 +414,7 @@ function exportPDF() {
     body: rows,
     styles: { fontSize: 9 },
     headStyles: { fillColor: [22, 163, 74] },
-    columnStyles: { 3: { halign: "right" } }
+    columnStyles: { 3: { halign: "right" } },
   });
 
   doc.save(`FinTrack-${activeFilter}-${todayISO()}.pdf`);
@@ -389,8 +426,9 @@ function exportPDF() {
 async function loadAndRender() {
   try {
     refreshBtn.disabled = true;
+
     const rows = await fetchTransactions();
-    allTx = rows.map(normalizeTx).filter(t => t.date && t.type && t.amount);
+    allTx = rows.map(normalizeTx).filter((t) => t.date && t.type && t.amount > 0);
 
     computeDashboard();
     showToast("Dashboard updated.", "success");
@@ -402,9 +440,9 @@ async function loadAndRender() {
   }
 }
 
-document.querySelectorAll("[data-filter]").forEach(btn => {
+document.querySelectorAll("[data-filter]").forEach((btn) => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll("[data-filter]").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll("[data-filter]").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     activeFilter = btn.getAttribute("data-filter");
     activeFilterLabel.textContent = activeFilter[0].toUpperCase() + activeFilter.slice(1);
@@ -421,25 +459,18 @@ exportPdfBtn.addEventListener("click", exportPDF);
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  // Bootstrap validation
   if (!form.checkValidity()) {
     form.classList.add("was-validated");
     return;
   }
 
   const t = typeSelect.value;
-  const date = dateInput.value;
+  const date = dateInput.value; // yyyy-mm-dd
   const category = categorySelect.value;
   const amount = parseAmount(amountInput.value);
   const note = noteInput.value.trim();
 
-  let payload = {
-    date,
-    type: t,
-    category,
-    amount,
-    note
-  };
+  let payload = { date, type: t, category, amount, note };
 
   if (t === "Transfer") {
     const f = fromAccount.value;
@@ -451,8 +482,8 @@ form.addEventListener("submit", async (e) => {
     payload.fromAccount = f;
     payload.toAccount = to;
   } else {
-    payload.fromAccount = accountSelect.value; // store in FromAccount
-    payload.toAccount = ""; // not used
+    payload.fromAccount = accountSelect.value;
+    payload.toAccount = "";
   }
 
   try {
@@ -462,7 +493,6 @@ form.addEventListener("submit", async (e) => {
 
     await saveTransaction(payload);
 
-    // Reset amount/note only (keep date/type/category to speed entry)
     amountInput.value = "";
     noteInput.value = "";
     form.classList.remove("was-validated");
