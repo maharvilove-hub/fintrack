@@ -1,0 +1,110 @@
+:root{
+  --brand: #16a34a;        /* green */
+  --brand-2: #0f7a36;
+  --soft: #f4fbf6;
+  --card: #ffffff;
+  --text: #0f172a;
+  --muted: #64748b;
+  --border: rgba(15, 23, 42, 0.08);
+}
+
+* { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+.bg-soft { background: var(--soft); color: var(--text); }
+
+.bg-brand { background: linear-gradient(135deg, var(--brand), var(--brand-2)); }
+.text-brand { color: var(--brand) !important; }
+.bg-brand-soft { background: rgba(22, 163, 74, 0.12) !important; }
+
+.brand-mark{
+  width: 36px; height: 36px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.18);
+}
+
+.card-soft{
+  border: 1px solid var(--border);
+  border-radius: 18px;
+}
+
+.icon-pill{
+  width: 42px; height: 42px;
+  display: inline-flex; align-items:center; justify-content:center;
+  border-radius: 14px;
+  font-size: 18px;
+}
+
+.btn-brand{
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.btn-brand:hover{ background: var(--brand-2); border-color: var(--brand-2); }
+
+.btn-outline-brand{
+  border-color: rgba(22,163,74,0.35);
+  color: var(--brand);
+}
+.btn-outline-brand:hover,
+.btn-outline-brand.active{
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.metric-card{
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 86px;
+}
+
+.metric-card-lg{ padding: 18px; }
+
+.metric-icon{
+  width: 48px; height: 48px;
+  display: inline-flex; align-items:center; justify-content:center;
+  border-radius: 16px;
+  font-size: 22px;
+  flex: 0 0 auto;
+}
+
+.metric-label{
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.metric-value{
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.pill{
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+}
+
+.chart-wrap{
+  height: 260px;
+}
+
+.table thead th{
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+@media (max-width: 576px){
+  .metric-value{ font-size: 20px; }
+  .chart-wrap{ height: 240px; }
+}
